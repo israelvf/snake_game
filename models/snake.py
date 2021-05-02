@@ -22,9 +22,12 @@ class Snake:
             self.body.append((x, y))
 
     def grow(self) -> None:
-        self.body.append((0, 0))
+        self.body.append(self.body[-1])
 
     def move(self, vector: tuple) -> None:
+        if vector == (0, 0):
+            return
+
         for i in range(len(self.body) - 1, 0, -1):
             self.body[i] = (self.body[i-1][0], self.body[i-1][1])
 

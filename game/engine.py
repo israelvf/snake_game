@@ -14,8 +14,10 @@ class Engine:
     apple_initial_position: tuple = field(init=False)
     snake_initial_position: tuple = field(init=False)
     screen_size: tuple = (600, 600)
+    game_area: tuple = (400, 400)
     grid_size: int = 10
     base_speed: int = 10
+    game_fps: int = 30
     score: int = 0
     high_score: int = 0
     death_count: int = 0
@@ -30,19 +32,28 @@ class Engine:
         self.initial_conditions()
 
     def initial_conditions(self) -> None:
-        if self.death_count:
-            pygame.time.delay(5000)
+        game_area: tuple = (400, 400)
+        self.game_area_border = pygame.Surface(
+            (self.game_area[0] + (2 * self.grid_size), self.game_area[1] +
+                (2 * self.grid_size)))
+        self.game_area_border.fill((200, 200, 200))
 
-        self.direction_vector = (-self.base_speed, 0)
-        self.speed = self.base_speed
+        self.game_area_skin = pygame.Surface(self.game_area)
+        self.game_area_skin.fill((0, 0, 0))
+
+        self.tick_number = 0
+        self.direction_vector = (-self.grid_size, 0)
+        self.speed_list = [self.direction_vector] + \
+            [(0, 0)] * (self.base_speed - 1)
+
         self.score = 0
         self.apple.position = self.apple_initial_position
         self.snake.position = self.snake_initial_position
         self.snake.create_body(self.grid_size)
 
     def get_random_position(self) -> tuple[int, int]:
-        x = randint(0, self.screen_size[0] - self.grid_size)
-        y = randint(0, self.screen_size[1] - self.grid_size)
+        x = randint(self.grid_size, self.game_area[0])
+        y = randint(self.grid_size, self.game_area[1])
 
         return (x//self.grid_size * self.grid_size, y//self.grid_size * self.grid_size)
 
@@ -65,10 +76,10 @@ class Engine:
         return False
 
     def check_wall_collision(self) -> bool:
-        up_wall_collision = self.snake.position[1] < 0
-        down_wall_collision = self.snake.position[1] >= self.screen_size[1]
-        right_wall_collision = self.snake.position[0] >= self.screen_size[0]
-        left_wall_collision = self.snake.position[0] < 0
+        up_wall_collision = self.snake.position[1] < self.grid_size
+        down_wall_collision = self.snake.position[1] > self.game_area[1]
+        right_wall_collision = self.snake.position[0] > self.game_area[0]
+        left_wall_collision = self.snake.position[0] < self.grid_size
 
         return up_wall_collision or down_wall_collision or right_wall_collision or left_wall_collision
 
@@ -82,6 +93,8 @@ class Engine:
 
     def render_screen(self) -> None:
         self.screen.fill((0, 0, 0))
+        self.screen.blit(self.game_area_border, (0, 0))
+        self.screen.blit(self.game_area_skin, (self.grid_size, self.grid_size))
         self.screen.blit(self.apple.skin, self.apple.position)
         for pos in self.snake.body:
             self.screen.blit(self.snake.skin, pos)
@@ -101,6 +114,8 @@ class Engine:
                 if event.key == K_ESCAPE:
                     pygame.quit()
                     sys.exit()
+                if event.key == K_RETURN:
+                    self.initial_conditions()
 
     def update_direction_vector(self, event) -> None:
         self.direction_lock = True
@@ -125,23 +140,65 @@ class Engine:
         if not prohibited_direction:
             self.direction_vector = new_direction
 
+        self.update_speed_list()
+
     def update_score(self) -> None:
         current_size = len(self.snake.body)
         initial_size = self.snake.initial_size
+        trigger_level = self.score//current_size
         bonus_snake_length = (current_size - initial_size)//10 * \
             (current_size - initial_size)
+
         self.score = (current_size - initial_size) + bonus_snake_length
 
+        current_speed = self.speed_list.count(self.direction_vector)
+
+        if (trigger_level + 1) > current_speed:
+            self.increase_speed()
+
+    def update_speed_list(self) -> None:
+        for index, direction in enumerate(self.speed_list):
+            if direction != (0, 0) and direction != self.direction_vector:
+                self.speed_list[index] = self.direction_vector
+
+    def split_list(self, alist, wanted_parts=1):
+        length = len(alist)
+        return [alist[i*length // wanted_parts: (i+1)*length // wanted_parts]
+                for i in range(wanted_parts)]
+
+    def increase_speed(self) -> None:
+        quantity_of_lists = self.speed_list.count(self.direction_vector) + 1
+        sublists = self.split_list(self.speed_list, quantity_of_lists)
+        valid_directions_in_sublists = [item.count(
+            self.direction_vector) for item in sublists]
+        list_to_insert = valid_directions_in_sublists.index(
+            min(valid_directions_in_sublists))
+
+        for index, direction in enumerate(sublists[list_to_insert]):
+            if direction == (0, 0):
+                sublists[list_to_insert][index] = self.direction_vector
+                break
+
+        self.speed_list = [item for sublist in sublists for item in sublist]
+
     def run(self) -> None:
-        self.direction_lock = False
-        self.clock.tick(20)
+        if self.speed_list[self.tick_number] != (0, 0):
+            self.direction_lock = False
+
+        self.clock.tick(self.game_fps)
+
+        self.tick_number += 1
+        if self.tick_number >= len(self.speed_list):
+            self.tick_number = 0
+
         self.process_game_events()
 
         death = self.check_death()
 
         if death:
             self.death_count += 1
-            self.initial_conditions()
+            for index, item in enumerate(self.speed_list):
+                self.speed_list[index] = (0, 0)
 
         apple_collision = self.check_apple_collision()
 
@@ -150,6 +207,6 @@ class Engine:
             self.snake.grow()
             self.update_score()
 
-        self.snake.move(self.direction_vector)
+        self.snake.move(self.speed_list[self.tick_number])
 
         self.render_screen()
