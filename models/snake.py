@@ -4,10 +4,10 @@ from pygame import Surface
 
 @dataclass
 class Snake:
-    position: tuple
+    position: tuple[int, int]
     initial_size: int
     skin: Surface = Surface((10, 10))
-    color: tuple = (255, 255, 255)
+    color: tuple[int, int, int] = (255, 255, 255)
     body: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
